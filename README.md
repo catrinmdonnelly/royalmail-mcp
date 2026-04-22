@@ -52,6 +52,18 @@ Plugged into any AI agent, this MCP can automate real shipping operations:
 - **Bulk fulfilment days.** For sale events or subscription-box drops, give your AI a CSV of hundreds of orders. It books them all at the right service and compensation tier in one run, then hands you a summary.
 - **Checkout quotes.** When a customer asks for shipping cost at checkout, your AI picks the right service for the weight and postcode, calculates the price, and responds within seconds.
 
+## Compatibility
+
+Works with any MCP client that supports stdio transport:
+
+- Claude Desktop
+- Cursor
+- Windsurf
+- Claude Code
+- Zed
+
+ChatGPT, Smithery and other remote-only MCP clients need an HTTP transport, which isn't included yet. If that matters to you, open an issue so I can prioritise it.
+
 ## Install
 
 ```bash
