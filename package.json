@@ -16,6 +16,7 @@
     "src",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
     ".env.example"
   ],
   "keywords": [
@@ -32,7 +33,7 @@
   "author": "Catrin Donnelly",
   "repository": {
     "type": "git",
-    "url": "https://github.com/catrinmdonnelly/royalmail-mcp.git"
+    "url": "git+https://github.com/catrinmdonnelly/royalmail-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/catrinmdonnelly/royalmail-mcp/issues"
