@@ -11,15 +11,16 @@ Verified against the live Click & Drop API (April 2026). Booking, tracking and c
 
 ## What it does
 
-Exposes five tools to any AI that speaks MCP:
+Exposes six tools to any AI that speaks MCP:
 
 | Tool | What it does |
 |------|--------------|
-| `book_order`    | Create an order in Click & Drop. Returns an `orderIdentifier`. |
-| `get_label`     | Fetch the postage label as a base64-encoded PDF. Requires an OBA account (see below). |
-| `track_order`   | Current status, tracking number and despatch date. |
-| `cancel_order`  | Cancel an order before it's manifested. No charge is applied. |
-| `list_services` | Every Royal Mail and Parcelforce service this MCP supports, with codes. |
+| `book_order`            | Create an order in Click & Drop. Returns an `orderIdentifier`. |
+| `book_batch_and_label`  | Book many orders at once and get back a single merged PDF of every label, ready to print. |
+| `get_label`             | Save the postage label to disk as a PDF. Requires an OBA account (see below). |
+| `track_order`           | Current status, tracking number and despatch date. |
+| `cancel_order`          | Cancel an order before it's manifested. No charge is applied. |
+| `list_services`         | Every Royal Mail and Parcelforce service this MCP supports, with codes. |
 
 Under the hood it talks to `https://api.parcel.royalmail.com/api/v1` using your Click & Drop API key.
 
@@ -38,6 +39,8 @@ Once the MCP is installed in your AI client, you can say things like:
 > *"What's the cheapest signed-for service for a 500g parcel?"* (AI calls `list_services` and reasons)
 
 > *"Track orders 1002, 1003 and 1004 and summarise where each one is."*
+
+> *"Here are ten orders — book them all on Royal Mail Tracked 24 and give me one PDF I can print."* (AI calls `book_batch_and_label` and returns the path to a merged PDF.)
 
 The AI handles address parsing, service selection and error recovery. You handle the business decisions.
 
@@ -164,6 +167,23 @@ Your API key grants full access to your Click & Drop account. Treat it like a pa
 - Never commit `.env` to git. The `.gitignore` in this repo already excludes it.
 - Don't paste your key into chat messages or shared documents.
 - Rotate it at Click & Drop → Settings → API credentials if it's ever exposed.
+
+## Privacy & data handling
+
+This MCP runs entirely on your machine. No customer data, credentials or API traffic flows through any server owned or operated by the author.
+
+The data path is:
+
+- Shipping details you give your AI assistant go to your AI provider (e.g. Anthropic, if you're using Claude) under your account.
+- Booking requests go to Royal Mail Click & Drop using your API key.
+- Labels are saved to your local disk at `~/Downloads/parcel-toolkit/` (overridable via the `PARCEL_TOOLKIT_LABELS_DIR` env var).
+
+If you're using this in a UK business, you are the data controller under UK GDPR. Practical recommendations:
+
+1. Use Claude Team, Claude Enterprise, or the Claude API directly — not consumer Claude.ai — so a Data Processing Agreement with Anthropic is in place. On consumer tiers, turn off "Help improve Claude" in Privacy settings at minimum.
+2. List Anthropic and Royal Mail as subprocessors in your privacy policy, the same way you would list a payment provider or email service.
+3. Avoid using this tool for special-category data (health, biometric, children's data) without additional legal review.
+4. This software is provided as-is under the MIT licence. The author is not a data processor and takes no responsibility for your compliance obligations — those sit with you as the data controller.
 
 ## Contributing
 

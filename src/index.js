@@ -13,6 +13,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import * as rm from './carriers/royalmail.js';
+import { saveLabelToDisk, mergeLabelsToPdf, timestamp } from './utils/labels.js';
 
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -35,7 +36,7 @@ if (existsSync(envPath)) {
 
 const server = new McpServer({
   name: 'royalmail-mcp',
-  version: '0.1.0',
+  version: '0.2.0',
 });
 
 server.tool(
@@ -146,13 +147,18 @@ server.tool(
 
 server.tool(
   'get_label',
-  'Get the shipping label for a Royal Mail Click & Drop order. Returns base64-encoded PDF label.',
+  'Get the shipping label for a Royal Mail Click & Drop order and save it to disk. Works for any order you have previously booked — pass its orderIdentifier. Default save location is ~/Downloads/parcel-toolkit/, overridable via the PARCEL_TOOLKIT_LABELS_DIR env var.',
   {
-    orderIdentifier: z.string().describe('The orderIdentifier returned when booking the order'),
+    orderIdentifier: z.string().describe('The orderIdentifier returned when booking the order (or from a previously booked order).'),
   },
   async ({ orderIdentifier }) => {
     try {
       const result = await rm.getLabel(orderIdentifier);
+      const filePath = await saveLabelToDisk({
+        labelBase64: result.labelBase64,
+        filenameStem: `rm-${orderIdentifier}-${timestamp()}`,
+        extension: 'pdf',
+      });
       return {
         content: [{
           type: 'text',
@@ -160,7 +166,8 @@ server.tool(
             success: true,
             orderIdentifier,
             format: 'PDF',
-            labelBase64: result.labelBase64,
+            filePath,
+            message: `Label saved to ${filePath}. Open or drag the file to print.`,
           }, null, 2),
         }],
       };
@@ -170,6 +177,129 @@ server.tool(
         isError: true,
       };
     }
+  }
+);
+
+const rmRecipientSchema = z.object({
+  fullName:     z.string().describe('Recipient full name'),
+  companyName:  z.string().optional().describe('Company name (optional)'),
+  addressLine1: z.string().describe('First line of address'),
+  addressLine2: z.string().optional().describe('Second line of address (optional)'),
+  city:         z.string().describe('Town or city'),
+  county:       z.string().optional().describe('County (optional)'),
+  postcode:     z.string().describe('UK postcode'),
+  phone:        z.string().optional().describe('Phone number (optional)'),
+  email:        z.string().optional().describe('Email for delivery notifications (optional)'),
+});
+
+const rmPerShipmentSchema = z.object({
+  recipient: rmRecipientSchema.describe('Recipient address for this order'),
+  weightGrams: z.number().positive().describe('Weight in grams for this order (e.g. 500 for 500g)'),
+  reference: z.string().optional().describe('Internal order reference for this shipment'),
+  subtotal: z.number().optional().describe('Order subtotal in GBP (used for customs/insurance)'),
+  goodsDescription: z.string().optional().describe('Brief description of contents'),
+});
+
+server.tool(
+  'book_batch_and_label',
+  'Book multiple Royal Mail orders at once and return a single merged PDF containing every label, ready to print. Use this when the user pastes a list of orders/addresses. All orders share the same service, package format and sender. Saves the merged PDF to ~/Downloads/parcel-toolkit/ (overridable via PARCEL_TOOLKIT_LABELS_DIR).',
+  {
+    service: z.string().describe('Royal Mail service for every order in this batch (e.g. "tracked-24", "tracked-48", "first-class", "special-delivery-1000"). Call list_services for full catalogue.'),
+    packageFormat: z.enum(['letter', 'large-letter', 'small-parcel', 'medium-parcel', 'parcel']).default('small-parcel').describe('Package format for every order in the batch.'),
+    sender: z.object({
+      fullName:     z.string().optional(),
+      companyName:  z.string().optional(),
+      addressLine1: z.string(),
+      addressLine2: z.string().optional(),
+      city:         z.string(),
+      postcode:     z.string(),
+    }).optional().describe('Sender address. Omit to use the address saved in your Click & Drop account.'),
+    despatchDate: z.string().optional().describe('Planned despatch date YYYY-MM-DD. Omit if the account does not allow future-dated orders.'),
+    shipments: z.array(rmPerShipmentSchema).min(1).describe('Array of orders to book. Each entry is one order with its own recipient, weight and reference.'),
+  },
+  async (params) => {
+    const { service, packageFormat, sender, despatchDate, shipments } = params;
+
+    const bookingResults = [];
+    const failures = [];
+    const labelsBase64 = [];
+
+    for (let i = 0; i < shipments.length; i++) {
+      const s = shipments[i];
+      const orderParams = {
+        service,
+        packageFormat,
+        weightGrams: s.weightGrams,
+        recipient: s.recipient,
+        sender,
+        despatchDate,
+        reference: s.reference,
+        subtotal: s.subtotal,
+        goodsDescription: s.goodsDescription,
+      };
+
+      try {
+        const booked = await rm.createOrder(orderParams);
+        const orderIdentifier = booked.orderIdentifier;
+
+        const label = await rm.getLabel(orderIdentifier);
+        labelsBase64.push(label.labelBase64);
+
+        bookingResults.push({
+          index: i + 1,
+          recipient: `${s.recipient.fullName}, ${s.recipient.postcode}`,
+          orderIdentifier,
+          orderReference: booked.orderReference,
+          reference: s.reference || null,
+        });
+      } catch (err) {
+        failures.push({
+          index: i + 1,
+          recipient: `${s.recipient.fullName}, ${s.recipient.postcode}`,
+          error: err.message,
+        });
+      }
+    }
+
+    if (labelsBase64.length === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            booked: 0,
+            failed: failures.length,
+            failures,
+            message: 'No labels generated — all orders failed. See failures for details.',
+          }, null, 2),
+        }],
+        isError: true,
+      };
+    }
+
+    const filePath = await mergeLabelsToPdf({
+      labelsBase64,
+      filenameStem: `rm-batch-${timestamp()}-${labelsBase64.length}labels`,
+    });
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          success: true,
+          carrier: 'Royal Mail',
+          service,
+          packageFormat,
+          despatchDate: despatchDate || null,
+          booked: bookingResults.length,
+          failed: failures.length,
+          shipments: bookingResults,
+          failures: failures.length ? failures : undefined,
+          mergedPdfPath: filePath,
+          message: `Booked ${bookingResults.length} of ${shipments.length} orders. Merged PDF saved to ${filePath}. Open or drag to print.`,
+        }, null, 2),
+      }],
+    };
   }
 );
 

@@ -214,7 +214,12 @@ export async function createOrder(params) {
     };
   }
   if (params.goodsDescription) {
-    pkg.contents = [{ name: params.goodsDescription, quantity: 1, unitValue: params.subtotal || 0 }];
+    pkg.contents = [{
+      name: params.goodsDescription,
+      quantity: 1,
+      unitValue: params.subtotal || 0,
+      unitWeightInGrams: pkg.weightInGrams,
+    }];
   }
 
   // Build postage details

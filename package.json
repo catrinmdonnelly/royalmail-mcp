@@ -1,6 +1,6 @@
 {
   "name": "royalmail-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for Royal Mail Click & Drop. Book, label, track and cancel UK shipments from any MCP-compatible AI.",
   "type": "module",
   "main": "src/index.js",
@@ -42,6 +42,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.0",
+    "pdf-lib": "^1.17.1",
     "zod": "^3.23.0"
   },
   "engines": {
