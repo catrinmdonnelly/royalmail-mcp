@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "royalmail": {
+      "command": "npx",
+      "args": ["-y", "royalmail-mcp@0.2.1"],
+      "env": {
+        "RM_API_KEY": "${user_config.rm_api_key}"
+      }
+    }
+  }
+}

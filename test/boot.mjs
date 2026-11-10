@@ -6,6 +6,16 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
 const EXPECTED = new Set(['book_order', 'book_batch_and_label', 'get_label', 'track_order', 'cancel_order', 'list_services']);
+// Anthropic's directory needs every tool to carry a title and a read-only or destructive hint.
+// Booking and cancelling spend or undo real money, so they must be destructive and Claude asks first.
+const SAFETY = {
+  book_order: { readOnly: false, destructive: true },
+  book_batch_and_label: { readOnly: false, destructive: true },
+  cancel_order: { readOnly: false, destructive: true },
+  get_label: { readOnly: false, destructive: false }, // saves a file on this computer, books nothing
+  track_order: { readOnly: true, destructive: false },
+  list_services: { readOnly: true, destructive: false },
+};
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER = resolve(__dirname, '../src/index.js');
 
@@ -45,4 +55,13 @@ if (names.size !== EXPECTED.size) {
   fail(`unexpected tool(s) registered: ${extra.join(', ')}`);
 }
 
-console.log(`OK: ${init.result.serverInfo.name} v${init.result.serverInfo.version} exposed ${names.size} tools`);
+for (const tool of tl.result.tools) {
+  const a = tool.annotations || {};
+  const want = SAFETY[tool.name];
+  if (!a.title || typeof a.title !== 'string') fail(`${tool.name} has no title annotation`);
+  if (a.readOnlyHint !== want.readOnly) fail(`${tool.name} readOnlyHint is ${a.readOnlyHint}, expected ${want.readOnly}`);
+  if (a.destructiveHint !== want.destructive) fail(`${tool.name} destructiveHint is ${a.destructiveHint}, expected ${want.destructive}`);
+  if (tool.name.length > 64) fail(`${tool.name} is longer than 64 characters`);
+}
+
+console.log(`OK: ${init.result.serverInfo.name} v${init.result.serverInfo.version} exposed ${names.size} tools, all labelled`);

@@ -1,6 +1,7 @@
 {
   "name": "royalmail-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "mcpName": "io.github.catrinmdonnelly/royalmail-mcp",
   "description": "MCP server for Royal Mail Click & Drop. Book, label, track and cancel UK shipments from any MCP-compatible AI.",
   "type": "module",
   "main": "src/index.js",
@@ -10,14 +11,13 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node test/boot.mjs"
+    "test": "node test/boot.mjs && node test/safety.mjs"
   },
   "files": [
     "src",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md",
-    ".env.example"
+    "CHANGELOG.md"
   ],
   "keywords": [
     "mcp",
@@ -41,9 +41,9 @@
   "homepage": "https://github.com/catrinmdonnelly/royalmail-mcp#readme",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.10.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "pdf-lib": "^1.17.1",
-    "zod": "^3.23.0"
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=18.0.0"

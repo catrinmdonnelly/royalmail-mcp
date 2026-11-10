@@ -19,7 +19,7 @@ Exposes six tools to any AI that speaks MCP:
 | `book_batch_and_label`  | Book many orders at once and get back a single merged PDF of every label, ready to print. |
 | `get_label`             | Save the postage label to disk as a PDF. Requires an OBA account (see below). |
 | `track_order`           | Current status, tracking number and despatch date. |
-| `cancel_order`          | Cancel an order before it's manifested. No charge is applied. |
+| `cancel_order`          | Cancel an order before it's manifested. |
 | `list_services`         | Every Royal Mail and Parcelforce service this MCP supports, with codes. |
 
 Under the hood it talks to `https://api.parcel.royalmail.com/api/v1` using your Click & Drop API key.
@@ -40,7 +40,7 @@ Once the MCP is installed in your AI client, you can say things like:
 
 > *"Track orders 1002, 1003 and 1004 and summarise where each one is."*
 
-> *"Here are ten orders — book them all on Royal Mail Tracked 24 and give me one PDF I can print."* (AI calls `book_batch_and_label` and returns the path to a merged PDF.)
+> *"Here are ten orders, book them all on Royal Mail Tracked 24 and give me one PDF I can print."* (AI calls `book_batch_and_label` and returns the path to a merged PDF.)
 
 The AI handles address parsing, service selection and error recovery. You handle the business decisions.
 
@@ -50,10 +50,8 @@ Plugged into any AI agent, this MCP can automate real shipping operations:
 
 - **Daily order fulfilment.** Every morning, your AI reads new orders from Shopify, WooCommerce or a spreadsheet, books each one via Royal Mail at the right service level, and posts tracking numbers back to the customer.
 - **Customer service triage.** When a customer emails "where's my parcel?", your AI calls `track_order`, summarises the latest status in plain English, and drafts a reply.
-- **Returns handling.** A customer requests a return. Your AI reads the request, books the correct return service, and emails the printable label straight back, with no staff time involved.
-- **Multi-carrier picking.** Installed alongside [apc-mcp](https://github.com/catrinmdonnelly/apc-mcp), your AI compares Royal Mail and APC at booking time and picks the cheapest or fastest option per destination.
-- **Bulk fulfilment days.** For sale events or subscription-box drops, give your AI a CSV of hundreds of orders. It books them all at the right service and compensation tier in one run, then hands you a summary.
-- **Checkout quotes.** When a customer asks for shipping cost at checkout, your AI picks the right service for the weight and postcode, calculates the price, and responds within seconds.
+- **Multi-carrier picking.** Installed alongside [apc-mcp](https://github.com/catrinmdonnelly/apc-mcp), your AI can book each parcel with whichever carrier you tell it to. Neither tool returns prices, so the choice is yours.
+- **Bulk fulfilment days.** For sale events or subscription-box drops, give your AI a CSV of hundreds of orders. It books up to 50 at a time and reports the result, so check the list before you approve because every booking costs money.
 
 ## Compatibility
 
@@ -180,10 +178,10 @@ The data path is:
 
 If you're using this in a UK business, you are the data controller under UK GDPR. Practical recommendations:
 
-1. Use Claude Team, Claude Enterprise, or the Claude API directly — not consumer Claude.ai — so a Data Processing Agreement with Anthropic is in place. On consumer tiers, turn off "Help improve Claude" in Privacy settings at minimum.
+1. Use Claude Team, Claude Enterprise, or the Claude API directly, not consumer Claude.ai, so a Data Processing Agreement with Anthropic is in place. On consumer tiers, turn off "Help improve Claude" in Privacy settings at minimum.
 2. List Anthropic and Royal Mail as subprocessors in your privacy policy, the same way you would list a payment provider or email service.
 3. Avoid using this tool for special-category data (health, biometric, children's data) without additional legal review.
-4. This software is provided as-is under the MIT licence. The author is not a data processor and takes no responsibility for your compliance obligations — those sit with you as the data controller.
+4. This software is provided as-is under the MIT licence. The author is not a data processor and takes no responsibility for your compliance obligations, those sit with you as the data controller.
 
 ## Contributing
 
