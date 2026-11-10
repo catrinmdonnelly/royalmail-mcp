@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.catrinmdonnelly/royalmail-mcp",
+  "description": "Book, track and cancel Royal Mail and Parcelforce shipments from any MCP client.",
+  "repository": {
+    "url": "https://github.com/catrinmdonnelly/royalmail-mcp",
+    "source": "github"
+  },
+  "version": "0.2.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "royalmail-mcp",
+      "version": "0.2.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "RM_API_KEY",
+          "description": "Your Royal Mail Click & Drop API key, from Settings then API credentials.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

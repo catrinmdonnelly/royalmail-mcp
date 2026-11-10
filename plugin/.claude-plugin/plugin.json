@@ -1,0 +1,28 @@
+{
+  "name": "parcel-toolkit-royal-mail",
+  "displayName": "Parcel Toolkit for Royal Mail Click & Drop",
+  "version": "0.2.1",
+  "description": "Book, track and cancel Royal Mail and Parcelforce shipments by asking Claude. It uses your own Click & Drop account, runs on your computer and talks straight to Royal Mail.",
+  "author": {
+    "name": "Catrin Donnelly",
+    "url": "https://parceltoolkit.com"
+  },
+  "homepage": "https://github.com/catrinmdonnelly/royalmail-mcp",
+  "repository": "https://github.com/catrinmdonnelly/royalmail-mcp",
+  "license": "MIT",
+  "keywords": ["royal-mail", "parcelforce", "click-and-drop", "shipping", "uk", "courier"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/catrinmdonnelly/royalmail-mcp#readme",
+  "supportUrl": "https://github.com/catrinmdonnelly/royalmail-mcp/issues",
+  "privacyPolicyUrl": "https://parceltoolkit.com/privacy/",
+  "termsOfServiceUrl": "https://parceltoolkit.com/terms/",
+  "userConfig": {
+    "rm_api_key": {
+      "type": "string",
+      "title": "Click & Drop API key",
+      "description": "Your Royal Mail Click & Drop API key, found under Settings then API credentials. Claude Code keeps it in your computer's secure storage.",
+      "required": true,
+      "sensitive": true
+    }
+  }
+}

@@ -10,7 +10,27 @@
  *       Labels are returned as PDF binary. Base64-encoded in this client.
  */
 
-const BASE_URL = process.env.RM_BASE_URL || 'https://api.parcel.royalmail.com/api/v1';
+import { cleanText, safeDigits, parseDate } from '../utils/text.js';
+
+const DEFAULT_BASE_URL = 'https://api.parcel.royalmail.com/api/v1';
+const REQUEST_TIMEOUT_MS = 30000;
+const MAYBE_CREATED = ' The order may still have been created, so check Click & Drop before booking again.';
+
+// Read on every call. The API key is only ever sent over https, or to a server on this computer.
+function baseUrl() {
+  const url = (process.env.RM_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('RM_BASE_URL is not a valid web address.');
+  }
+  const onThisComputer = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && onThisComputer)) {
+    throw new Error('RM_BASE_URL must start with https:// (plain http is only allowed for localhost).');
+  }
+  return url;
+}
 
 // ─── Service codes ────────────────────────────────────────────────────────────
 // These are the Service Register codes as they appear in Click & Drop
@@ -80,7 +100,7 @@ function getAuthHeader() {
   const apiKey = process.env.RM_API_KEY;
   if (!apiKey) {
     throw new Error(
-      'Royal Mail API key not set. Add RM_API_KEY to your .env file. ' +
+      'Royal Mail API key not set. Add RM_API_KEY to the MCP server settings, or to a .env file if you run it by hand. ' +
       'Get yours from: Click & Drop > Settings > API credentials.'
     );
   }
@@ -90,7 +110,7 @@ function getAuthHeader() {
 // ─── HTTP helper ──────────────────────────────────────────────────────────────
 
 async function request(method, path, body = null, { binary = false } = {}) {
-  const url = `${BASE_URL}${path}`;
+  const url = `${baseUrl()}${path}`;
 
   const headers = {
     'Authorization': getAuthHeader(),
@@ -98,22 +118,40 @@ async function request(method, path, body = null, { binary = false } = {}) {
     'Accept':        binary ? 'application/pdf' : 'application/json',
   };
 
-  const options = { method, headers };
+  // The API key travels in a header, so never follow a redirect to another address.
+  const options = { method, headers, redirect: 'error', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) };
   if (body) options.body = JSON.stringify(body);
 
-  const response = await fetch(url, options);
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (err) {
+    if (err?.name === 'TimeoutError') {
+      throw new Error(`Royal Mail did not reply within ${REQUEST_TIMEOUT_MS / 1000} seconds.${method === 'POST' ? MAYBE_CREATED : ''}`);
+    }
+    throw new Error(`Could not reach Royal Mail (${cleanText(err?.cause?.code || err?.message, 100)}).${method === 'POST' ? MAYBE_CREATED : ''}`);
+  }
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Royal Mail API ${response.status}: ${error}`);
+    const error = await response.text().catch(() => '');
+    const failure = new Error(`Royal Mail API ${response.status}: ${cleanText(error, 300)}${method === 'POST' && response.status >= 500 ? MAYBE_CREATED : ''}`);
+    failure.status = response.status;
+    throw failure;
   }
 
   if (binary) {
-    const buffer = await response.arrayBuffer();
-    return Buffer.from(buffer).toString('base64');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.subarray(0, 5).toString() !== '%PDF-') {
+      throw new Error('Royal Mail did not send a PDF label.');
+    }
+    return buffer.toString('base64');
   }
 
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(`Royal Mail sent a reply that could not be read.${method === 'POST' ? MAYBE_CREATED : ''}`);
+  }
 }
 
 // ─── Create order ─────────────────────────────────────────────────────────────
@@ -140,13 +178,15 @@ async function request(method, path, body = null, { binary = false } = {}) {
  * @param {string} params.goodsDescription     - Description of contents
  */
 export async function createOrder(params) {
-  const serviceCode = RM_SERVICES[params.service] || params.service || 'OLP1';
-  const packageFormat = RM_PACKAGE_FORMATS[params.packageFormat] || params.packageFormat || 'smallParcel';
+  const serviceCode = (Object.hasOwn(RM_SERVICES, params.service) ? RM_SERVICES[params.service] : params.service) || 'OLP1';
+  const packageFormat = (Object.hasOwn(RM_PACKAGE_FORMATS, params.packageFormat) ? RM_PACKAGE_FORMATS[params.packageFormat] : params.packageFormat) || 'smallParcel';
 
   const orderDate = new Date().toISOString();
-  const despatchDate = params.despatchDate
-    ? new Date(params.despatchDate).toISOString()
-    : null;
+  let despatchDate = null;
+  if (params.despatchDate) {
+    const { y, m, d } = parseDate(params.despatchDate, 'The despatch date');
+    despatchDate = new Date(Date.UTC(+y, +m - 1, +d)).toISOString();
+  }
 
   // Build recipient: fullName and companyName live inside the address object
   const recipientAddress = {
@@ -203,7 +243,7 @@ export async function createOrder(params) {
 
   // Build package
   const pkg = {
-    weightInGrams:           Math.round(params.weightGrams || 500),
+    weightInGrams:           Math.max(1, Math.round(params.weightGrams || 500)),
     packageFormatIdentifier: packageFormat,
   };
   if (params.dimensions) {
@@ -258,19 +298,21 @@ export async function createOrder(params) {
   // Response shape: { successCount, errorsCount, createdOrders: [...], failedOrders: [...] }
   if (result.errorsCount > 0 && result.successCount === 0) {
     const err = result.failedOrders?.[0]?.errors?.[0];
-    throw new Error(`Royal Mail order failed: ${err?.errorMessage || JSON.stringify(result.failedOrders)}`);
+    throw new Error(`Royal Mail order failed: ${cleanText(err?.errorMessage || JSON.stringify(result.failedOrders), 300)}`);
   }
 
   const created = result.createdOrders?.[0];
+  if (created?.orderIdentifier === undefined || created?.orderIdentifier === null) {
+    throw new Error('Royal Mail did not return an order identifier, so the order may not have been created. Check Click & Drop before booking again.');
+  }
 
   return {
     success:         true,
-    orderIdentifier: created?.orderIdentifier,
-    orderReference:  created?.orderReference || params.reference,
-    status:          created?.status,
+    orderIdentifier: cleanText(String(created.orderIdentifier), 40),
+    orderReference:  cleanText(created.orderReference || params.reference || '', 100),
+    status:          cleanText(created.status || '', 60),
     service:         params.service,
     serviceCode,
-    raw: created,
   };
 }
 
@@ -284,12 +326,13 @@ export async function createOrder(params) {
  */
 export async function getLabel(orderIdentifier) {
   // Returns PDF binary. documentType + includeReturnsLabel are both required query params.
-  const path = `/orders/${orderIdentifier}/label?documentType=postageLabel&includeReturnsLabel=false`;
+  const id = safeDigits(orderIdentifier, 'The order identifier');
+  const path = `/orders/${encodeURIComponent(id)}/label?documentType=postageLabel&includeReturnsLabel=false`;
   const labelBase64 = await request('GET', path, null, { binary: true });
 
   return {
     success: true,
-    orderIdentifier,
+    orderIdentifier: id,
     format: 'PDF',
     labelBase64,
   };
@@ -303,17 +346,18 @@ export async function getLabel(orderIdentifier) {
  * @param {string} orderIdentifier - The orderIdentifier returned when creating the order
  */
 export async function getOrder(orderIdentifier) {
-  const result = await request('GET', `/orders/${orderIdentifier}`);
+  const id = safeDigits(orderIdentifier, 'The order identifier');
+  const result = await request('GET', `/orders/${encodeURIComponent(id)}`);
   const order = Array.isArray(result) ? result[0] : result;
+  if (!order) throw new Error('Royal Mail has no order with that identifier.');
 
   return {
     success: true,
-    orderIdentifier,
-    status:         order?.status,
-    trackingNumber: order?.trackingNumber,
-    service:        order?.postageDetails?.serviceCode,
-    despatchDate:   order?.plannedDespatchDate,
-    raw: order,
+    orderIdentifier: id,
+    status:         cleanText(order?.status, 120),
+    trackingNumber: cleanText(order?.trackingNumber, 60),
+    service:        cleanText(order?.postageDetails?.serviceCode, 40),
+    despatchDate:   cleanText(order?.plannedDespatchDate, 40),
   };
 }
 
@@ -326,12 +370,18 @@ export async function getOrder(orderIdentifier) {
  */
 export async function cancelOrder(orderIdentifier) {
   // Click & Drop cancels pre-despatch orders via DELETE.
-  const result = await request('DELETE', `/orders/${orderIdentifier}`);
+  const id = safeDigits(orderIdentifier, 'The order identifier');
+  const result = await request('DELETE', `/orders/${encodeURIComponent(id)}`);
 
-  return {
-    success: true,
-    orderIdentifier,
-    message: 'Cancellation request sent.',
-    raw: result,
-  };
+  // Royal Mail answers 200 even when it refuses, and lists the reasons in `errors`.
+  const refusals = Array.isArray(result?.errors) ? result.errors : [];
+  const deleted = Array.isArray(result?.deletedOrders) ? result.deletedOrders : [];
+  if (refusals.length > 0) {
+    const reasons = refusals.slice(0, 3).map((e) => cleanText(e?.message || e?.code || 'refused', 150)).join('; ');
+    return { success: false, orderIdentifier: id, message: `Royal Mail did not cancel the order: ${reasons}` };
+  }
+  if (deleted.length === 0) {
+    return { success: false, orderIdentifier: id, message: 'Royal Mail did not confirm the cancellation. Check the order in Click & Drop.' };
+  }
+  return { success: true, orderIdentifier: id, message: 'Order cancelled.' };
 }
